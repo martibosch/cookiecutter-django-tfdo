@@ -7,11 +7,11 @@ env:
 
 on:
   pull_request:
-    branches: [ "master", "main" ]
+    branches: [ "main", "staging", "develop" ]
     paths-ignore: [ "docs/**" ]
 
   push:
-    branches: [ "master", "main" ]
+    branches: [ "main", "staging", "develop" ]
     paths-ignore: [ "docs/**" ]
 
 concurrency:
@@ -19,8 +19,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linter:
+  lint:
     runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.extract_branch.outputs.branch }}
     steps:
 
       - name: Checkout Code Repository
@@ -38,10 +40,16 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v2.0.3
 
-  # With no caching at all the entire ci process takes 4m 30s to complete!
-  pytest:
-    runs-on: ubuntu-latest
+      - name: Extract branch name
+        shell: bash
+        run: echo "::set-output name=branch::$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
 
+  # With no caching at all the entire ci process takes 4m 30s to complete!
+  pytest-dev:
+    needs: lint
+    runs-on: ubuntu-latest
+    if: ${{ needs.lint.outputs.branch == 'develop' }}
     steps:
 
       - name: Checkout Code Repository
@@ -58,3 +66,24 @@ jobs:
 
       - name: Tear down the Stack
         run:  docker-compose -f local.yml down
+
+  pytest-staging:
+    needs: lint
+    runs-on: ubuntu-latest
+    if: ${{ needs.lint.outputs.branch == 'staging' }}
+    steps:
+
+      - name: Checkout Code Repository
+        uses: actions/checkout@v3
+
+      - name: Build the Stack
+        run:  docker-compose -f production.yml -f production.staging.yml build
+
+      - name: Run DB Migrations
+        run:  docker-compose -f production.yml -f production.staging.yml run --rm django python manage.py migrate
+
+      - name: Run Django Tests
+        run:  docker-compose -f production.yml -f production.staging.yml run django pytest
+
+      - name: Tear down the Stack
+        run:  docker-compose -f production.yml -f production.staging.yml down
