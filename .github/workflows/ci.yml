@@ -21,8 +21,6 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    outputs:
-      branch: ${{ steps.extract_branch.outputs.branch }}
     steps:
 
       - name: Checkout Code Repository
@@ -40,16 +38,22 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v2.0.3
 
+  extract-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.extract_branch.outputs.branch }}
+    steps:
+
       - name: Extract branch name
         shell: bash
         run: echo "::set-output name=branch::$(echo ${GITHUB_REF#refs/heads/})"
         id: extract_branch
 
   # With no caching at all the entire ci process takes 4m 30s to complete!
-  pytest-dev:
-    needs: lint
+  pytest-develop:
+    needs: [lint, extract-branch]
     runs-on: ubuntu-latest
-    if: ${{ needs.lint.outputs.branch == 'develop' }}
+    if: ${{ needs.extract-branch.outputs.branch == 'develop' }}
     steps:
 
       - name: Checkout Code Repository
@@ -67,79 +71,111 @@ jobs:
       - name: Tear down the Stack
         run:  docker-compose -f local.yml down
 
-
-  base-secrets:
-    needs: lint
+  secrets-base:
     runs-on: ubuntu-latest
-    if: ${{ needs.lint.outputs.branch == 'production' || needs.lint.outputs.branch == 'staging' }}
+    needs: extract-branch
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' || needs.lint.outputs.branch == 'main' }}
     steps:
-      - name: Create folder
-        run: mkdir -p .envs/.production
-      - name: django env file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: '.django'
-          fileDir: '.envs/.production'
-          encodedString: ${{ secrets.PRODUCTION_DJANGO_ENV }}
-      - name: postgres env file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: '.postgres'
-          fileDir: '.envs/.production'
-          encodedString: ${{ secrets.PRODUCTION_POSTGRES_ENV }}
-      - name: traefik env file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: '.traefik'
-          fileDir: '.envs/.production'
-          encodedString: ${{ secrets.PRODUCTION_TRAEFIK_ENV }}
 
-  staging-secrets:
-    needs: [lint, base-secrets]
+      - name: Create secret files
+        env:
+          PRODUCTION_DJANGO_ENV: ${{ secrets.PRODUCTION_DJANGO_ENV }}
+          PRODUCTION_POSTGRES_ENV: ${{ secrets.PRODUCTION_POSTGRES_ENV }}
+          PRODUCTION_TRAEFIK_ENV: ${{ secrets.PRODUCTION_TRAEFIK_ENV }}
+        run: |
+          echo $PRODUCTION_DJANGO_ENV | base64 -di > .django
+          echo $PRODUCTION_POSTGRES_ENV | base64 -di > .postgres
+          echo $PRODUCTION_TRAEFIK_ENV | base64 -di > .traefik
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-django
+          path: .django
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-postgres
+          path: .postgres
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-traefik
+          path: .traefik
+
+  secrets-staging:
+    needs: [extract-branch, secrets-base]
     runs-on: ubuntu-latest
-    if: ${{ needs.lint.outputs.branch == 'staging' }}
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
     steps:
-      - name: Create folder
-        run: mkdir -p .envs/.staging
-      - name: django env file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: '.django'
-          fileDir: '.envs/.staging'
-          encodedString: ${{ secrets.STAGING_DJANGO_ENV }}
-      - name: traefik env file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: '.traefik'
-          fileDir: '.envs/.staging'
-          encodedString: ${{ secrets.STAGING_TRAEFIK_ENV }}
-      - name: terraform vars file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: 'staging.tfvars'
-          fileDir: 'terraform'
-          encodedString: ${{ secrets.STAGING_TFVARS }}
 
-  production-secrets:
-    needs: [lint, base-secrets]
-    runs-on: ubuntu-latest
-    if: ${{ needs.lint.outputs.branch == 'production' }}
-    steps:
-      - name: terraform vars file
-        uses: timheuer/base64-to-file@v1.1
-        with:
-          fileName: 'production.tfvars'
-          fileDir: 'terraform'
-          encodedString: ${{ secrets.PRODUCTION_TFVARS }}
+      - name: Create secret files
+        env:
+          STAGING_DJANGO_ENV: ${{ secrets.STAGING_DJANGO_ENV }}
+          STAGING_TRAEFIK_ENV: ${{ secrets.STAGING_TRAEFIK_ENV }}
+          STAGING_TFVARS: ${{ secrets.STAGING_TRAEFIK_ENV }}
+        run: |
+          echo $STAGING_DJANGO_ENV | base64 -di > .django
+          echo $STAGING_TRAEFIK_ENV | base64 -di > .traefik
+          echo $STAGING_TFVARS | base64 -di > staging.tfvars
 
-  pytest-staging:
-    needs: [lint, staging-secrets]
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-django
+          path: .django
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-traefik
+          path: .traefik
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-tfvars
+          path: staging.tfvars
+
+  build-staging:
+    needs: [lint, extract-branch, secrets-staging]
     runs-on: ubuntu-latest
-    if: ${{ needs.lint.outputs.branch == 'staging' }}
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
     steps:
 
       - name: Checkout Code Repository
         uses: actions/checkout@v3
+
+      - name: Create env directories
+        run: |
+          mkdir -p .envs/.production
+          mkdir -p .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-django
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-postgres
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-traefik
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-django
+          path: .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-traefik
+          path: .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
 
       - name: Build the Stack
         run:  docker-compose -f production.yml -f staging.yml build
@@ -147,8 +183,8 @@ jobs:
       - name: Run DB Migrations
         run:  docker-compose -f production.yml -f staging.yml run --rm django python manage.py migrate
 
-      - name: Run Django Tests
-        run:  docker-compose -f production.yml -f staging.yml run django pytest
+      - name: Up
+        run:  docker-compose -f production.yml -f staging.yml up -d
 
       - name: Tear down the Stack
         run:  docker-compose -f production.yml -f staging.yml down
