@@ -172,11 +172,6 @@ jobs:
           name: staging-traefik
           path: .envs/.staging
 
-      - uses: actions/download-artifact@v2
-        with:
-          name: staging-tfvars
-          path: terraform
-
       - name: Build the Stack
         run:  docker-compose -f production.yml -f staging.yml build
 
@@ -188,3 +183,69 @@ jobs:
 
       - name: Tear down the Stack
         run:  docker-compose -f production.yml -f staging.yml down
+
+  plan-staging:
+    needs: [extract-branch, build-staging]
+    runs-on: ubuntu-latest
+    name: Plan
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    env:
+      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.0.9
+
+      - name: Initialize Terraform
+        run: |
+          cd terraform
+          terraform init -input=false
+
+      - name: Create and staging workspace
+        id: plan
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform workspace new staging -input=false
+
+      - name: Download staging tfvars
+        uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
+
+      - name: Plan Terraform
+        id: plan
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform plan -var-file=staging.tfvars -input=false -no-color -out=tfplan \
+          && terraform show -no-color tfplan
+
+      - name: Reformat Plan
+        run: |
+          echo '${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}' \
+          | sed -E 's/^([[:space:]]+)([-+])/\2\1/g' > plan.txt
+
+      - name: Put Plan in Env Var
+        run: |
+          PLAN=$(cat plan.txt)
+          echo "PLAN<<EOF" >> $GITHUB_ENV
+          echo "$PLAN" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Post Plan to GitHub PR
+        uses: mshick/add-pr-comment@v1
+        with:
+          allow-repeats: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            ```diff
+            ${{ env.PLAN }}
+            ``
