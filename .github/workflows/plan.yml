@@ -1,0 +1,203 @@
+name: Plan
+
+# Enable Buildkit and let compose use it to speed up image building
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+on:
+  workflow_run:
+    workflows: ["Lint"]
+    branches: [staging, main]
+    types:
+      - completed
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  extract-branch:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      branch: ${{ steps.extract_branch.outputs.branch }}
+    steps:
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "::set-output name=branch::$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
+
+  secrets-base:
+    runs-on: ubuntu-latest
+    needs: extract-branch
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' || needs.lint.outputs.branch == 'main' }}
+    steps:
+
+      - name: Create secret files
+        env:
+          PRODUCTION_DJANGO_ENV: ${{ secrets.PRODUCTION_DJANGO_ENV }}
+          PRODUCTION_POSTGRES_ENV: ${{ secrets.PRODUCTION_POSTGRES_ENV }}
+          PRODUCTION_TRAEFIK_ENV: ${{ secrets.PRODUCTION_TRAEFIK_ENV }}
+        run: |
+          echo $PRODUCTION_DJANGO_ENV | base64 -di > .django
+          echo $PRODUCTION_POSTGRES_ENV | base64 -di > .postgres
+          echo $PRODUCTION_TRAEFIK_ENV | base64 -di > .traefik
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-django
+          path: .django
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-postgres
+          path: .postgres
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-traefik
+          path: .traefik
+
+  secrets-staging:
+    needs: [extract-branch, secrets-base]
+    runs-on: ubuntu-latest
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    steps:
+
+      - name: Create secret files
+        env:
+          STAGING_DJANGO_ENV: ${{ secrets.STAGING_DJANGO_ENV }}
+          STAGING_TRAEFIK_ENV: ${{ secrets.STAGING_TRAEFIK_ENV }}
+          STAGING_TFVARS: ${{ secrets.STAGING_TRAEFIK_ENV }}
+        run: |
+          echo $STAGING_DJANGO_ENV | base64 -di > .django
+          echo $STAGING_TRAEFIK_ENV | base64 -di > .traefik
+          echo $STAGING_TFVARS | base64 -di > staging.tfvars
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-django
+          path: .django
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-traefik
+          path: .traefik
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-tfvars
+          path: staging.tfvars
+
+  build-and-plan-staging:
+    needs: [extract-branch, secrets-staging]
+    runs-on: ubuntu-latest
+    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    env:
+      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
+    steps:
+
+      - name: Checkout Code Repository
+        uses: actions/checkout@v3
+
+      - name: Create env directories
+        run: |
+          mkdir -p .envs/.production
+          mkdir -p .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-django
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-postgres
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-traefik
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-django
+          path: .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-traefik
+          path: .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
+
+      - name: Build the Stack
+        run:  docker-compose -f production.yml -f staging.yml build
+
+      - name: Run DB Migrations
+        run:  docker-compose -f production.yml -f staging.yml run --rm django python manage.py migrate
+
+      - name: Up
+        run:  docker-compose -f production.yml -f staging.yml up -d
+
+      - name: Tear down the Stack
+        run:  docker-compose -f production.yml -f staging.yml down
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.0.9
+
+      - name: Initialize Terraform
+        run: |
+          cd terraform
+          terraform init -input=false
+
+      - name: Create and staging workspace
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform workspace new staging -input=false
+
+      - name: Download staging tfvars
+        uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
+
+      - name: Plan Terraform
+        id: plan
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform plan -var-file=staging.tfvars -input=false -no-color -out=tfplan \
+          && terraform show -no-color tfplan
+
+      - name: Reformat Plan
+        run: |
+          echo '${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}' \
+          | sed -E 's/^([[:space:]]+)([-+])/\2\1/g' > plan.txt
+
+      - name: Put Plan in Env Var
+        run: |
+          PLAN=$(cat plan.txt)
+          echo "PLAN<<EOF" >> $GITHUB_ENV
+          echo "$PLAN" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Post Plan to GitHub PR
+        uses: mshick/add-pr-comment@v1
+        with:
+          allow-repeats: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            ```diff
+            ${{ env.PLAN }}
+            ``
