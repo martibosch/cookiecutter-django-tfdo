@@ -1,4 +1,4 @@
-name: Development build
+name: CI
 
 # Enable Buildkit and let compose use it to speed up image building
 env:
@@ -7,7 +7,11 @@ env:
 
 on:
   pull_request:
-    branches: [ "develop" ]
+    branches: [ "master", "main" ]
+    paths-ignore: [ "docs/**" ]
+
+  push:
+    branches: [ "master", "main" ]
     paths-ignore: [ "docs/**" ]
 
 concurrency:
@@ -15,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  linter:
     runs-on: ubuntu-latest
     steps:
 
@@ -35,9 +39,9 @@ jobs:
         uses: pre-commit/action@v2.0.3
 
   # With no caching at all the entire ci process takes 4m 30s to complete!
-  pytest-develop:
-    needs: lint
+  pytest:
     runs-on: ubuntu-latest
+
     steps:
 
       - name: Checkout Code Repository
