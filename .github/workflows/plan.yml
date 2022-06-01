@@ -15,23 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  extract-branch:
-    runs-on: ubuntu-latest
-    outputs:
-      branch: ${{ steps.extract_branch.outputs.branch }}
-    steps:
-
-      - name: Extract branch name
-        shell: bash
-        run: |
-          echo ${GITHUB_REF#refs/heads/}
-          echo "::set-output name=branch::$(echo ${GITHUB_REF#refs/heads/})"
-        id: extract_branch
-
   secrets-base:
     runs-on: ubuntu-latest
-    needs: extract-branch
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' || needs.lint.outputs.branch == 'main' }}
+    if: ${{ github.event.pull_request.base.ref == 'staging' || github.event.pull_request.base.ref == 'main' }}
     steps:
 
       - name: Create secret files
@@ -60,9 +46,9 @@ jobs:
           path: .traefik
 
   secrets-staging:
-    needs: [extract-branch, secrets-base]
+    needs: secrets-base
     runs-on: ubuntu-latest
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    if: ${{ github.event.pull_request.base.ref == 'staging' }}
     steps:
 
       - name: Create secret files
@@ -91,9 +77,9 @@ jobs:
           path: staging.tfvars
 
   build-and-plan-staging:
-    needs: [extract-branch, secrets-staging]
+    needs: secrets-staging
     runs-on: ubuntu-latest
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    if: ${{ github.event.pull_request.base.ref == 'staging' }}
     env:
       TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     steps:
