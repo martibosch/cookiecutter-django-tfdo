@@ -55,7 +55,7 @@ jobs:
         env:
           STAGING_DJANGO_ENV: ${{ secrets.STAGING_DJANGO_ENV }}
           STAGING_TRAEFIK_ENV: ${{ secrets.STAGING_TRAEFIK_ENV }}
-          STAGING_TFVARS: ${{ secrets.STAGING_TRAEFIK_ENV }}
+          STAGING_TFVARS: ${{ secrets.STAGING_TFVARS }}
         run: |
           echo $STAGING_DJANGO_ENV | base64 -di > .django
           echo $STAGING_TRAEFIK_ENV | base64 -di > .traefik
