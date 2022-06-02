@@ -1,4 +1,4 @@
-name: CI
+name: Plan
 
 # Enable Buildkit and let compose use it to speed up image building
 env:
@@ -7,11 +7,7 @@ env:
 
 on:
   pull_request:
-    branches: [ "main", "staging", "develop" ]
-    paths-ignore: [ "docs/**" ]
-
-  push:
-    branches: [ "main", "staging", "develop" ]
+    branches: [ "staging" ]
     paths-ignore: [ "docs/**" ]
 
 concurrency:
@@ -19,62 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-
-      - name: Checkout Code Repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.9"
-          cache: pip
-          cache-dependency-path: |
-            requirements/base.txt
-            requirements/local.txt
-
-      - name: Run pre-commit
-        uses: pre-commit/action@v2.0.3
-
-  extract-branch:
-    runs-on: ubuntu-latest
-    outputs:
-      branch: ${{ steps.extract_branch.outputs.branch }}
-    steps:
-
-      - name: Extract branch name
-        shell: bash
-        run: echo "::set-output name=branch::$(echo ${GITHUB_REF#refs/heads/})"
-        id: extract_branch
-
-  # With no caching at all the entire ci process takes 4m 30s to complete!
-  pytest-develop:
-    needs: [lint, extract-branch]
-    runs-on: ubuntu-latest
-    if: ${{ needs.extract-branch.outputs.branch == 'develop' }}
-    steps:
-
-      - name: Checkout Code Repository
-        uses: actions/checkout@v3
-
-      - name: Build the Stack
-        run:  docker-compose -f local.yml build
-
-      - name: Run DB Migrations
-        run:  docker-compose -f local.yml run --rm django python manage.py migrate
-
-      - name: Run Django Tests
-        run:  docker-compose -f local.yml run django pytest
-
-      - name: Tear down the Stack
-        run:  docker-compose -f local.yml down
-
   secrets-base:
     runs-on: ubuntu-latest
-    needs: extract-branch
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' || needs.lint.outputs.branch == 'main' }}
+    if: ${{ github.event.pull_request.base.ref == 'staging' || github.event.pull_request.base.ref == 'main' }}
     steps:
 
       - name: Create secret files
@@ -103,16 +46,16 @@ jobs:
           path: .traefik
 
   secrets-staging:
-    needs: [extract-branch, secrets-base]
+    needs: secrets-base
     runs-on: ubuntu-latest
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    if: ${{ github.event.pull_request.base.ref == 'staging' }}
     steps:
 
       - name: Create secret files
         env:
           STAGING_DJANGO_ENV: ${{ secrets.STAGING_DJANGO_ENV }}
           STAGING_TRAEFIK_ENV: ${{ secrets.STAGING_TRAEFIK_ENV }}
-          STAGING_TFVARS: ${{ secrets.STAGING_TRAEFIK_ENV }}
+          STAGING_TFVARS: ${{ secrets.STAGING_TFVARS }}
         run: |
           echo $STAGING_DJANGO_ENV | base64 -di > .django
           echo $STAGING_TRAEFIK_ENV | base64 -di > .traefik
@@ -133,10 +76,12 @@ jobs:
           name: staging-tfvars
           path: staging.tfvars
 
-  build-staging:
-    needs: [lint, extract-branch, secrets-staging]
+  build-and-plan-staging:
+    needs: secrets-staging
     runs-on: ubuntu-latest
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
+    if: ${{ github.event.pull_request.base.ref == 'staging' }}
+    env:
+      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     steps:
 
       - name: Checkout Code Repository
@@ -172,6 +117,11 @@ jobs:
           name: staging-traefik
           path: .envs/.staging
 
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
+
       - name: Build the Stack
         run:  docker-compose -f production.yml -f staging.yml build
 
@@ -184,18 +134,6 @@ jobs:
       - name: Tear down the Stack
         run:  docker-compose -f production.yml -f staging.yml down
 
-  plan-staging:
-    needs: [extract-branch, build-staging]
-    runs-on: ubuntu-latest
-    name: Plan
-    if: ${{ needs.extract-branch.outputs.branch == 'staging' }}
-    env:
-      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
-
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
         with:
@@ -207,7 +145,6 @@ jobs:
           terraform init -input=false
 
       - name: Create and staging workspace
-        id: plan
         continue-on-error: true
         run: |
           cd terraform
