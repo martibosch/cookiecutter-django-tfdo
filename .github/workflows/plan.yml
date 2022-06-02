@@ -144,13 +144,14 @@ jobs:
           cd terraform
           terraform init -input=false
 
-      - name: Create and staging workspace
+      - name: Create and select workspace
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new staging -input=false
+          terraform workspace new staging
+          terraform workspace select staging
 
-      - name: Download staging tfvars
+      - name: Download tfvars
         uses: actions/download-artifact@v2
         with:
           name: staging-tfvars
