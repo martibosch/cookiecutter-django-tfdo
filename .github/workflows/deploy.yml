@@ -1,0 +1,188 @@
+name: Plan
+
+# Enable Buildkit and let compose use it to speed up image building
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+on:
+  push:
+    branches: [ "staging" ]
+    paths-ignore: [ "docs/**" ]
+
+
+jobs:
+  inform_about_apply:
+    name: Inform About Apply
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inform on PR that Apply is Running
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            ***Running terraform apply***
+            Results will display here momentarily...
+
+  secrets-base:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref_name == 'staging' || github.ref_name == 'main' }}
+    steps:
+
+      - name: Create secret files
+        env:
+          PRODUCTION_DJANGO_ENV: ${{ secrets.PRODUCTION_DJANGO_ENV }}
+          PRODUCTION_POSTGRES_ENV: ${{ secrets.PRODUCTION_POSTGRES_ENV }}
+          PRODUCTION_TRAEFIK_ENV: ${{ secrets.PRODUCTION_TRAEFIK_ENV }}
+        run: |
+          echo $PRODUCTION_DJANGO_ENV | base64 -di > .django
+          echo $PRODUCTION_POSTGRES_ENV | base64 -di > .postgres
+          echo $PRODUCTION_TRAEFIK_ENV | base64 -di > .traefik
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-django
+          path: .django
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-postgres
+          path: .postgres
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: production-traefik
+          path: .traefik
+
+  secrets-staging:
+    needs: secrets-base
+    runs-on: ubuntu-latest
+    if: ${{ github.ref_name == 'staging' }}
+    steps:
+
+      - name: Create secret files
+        env:
+          STAGING_DJANGO_ENV: ${{ secrets.STAGING_DJANGO_ENV }}
+          STAGING_TRAEFIK_ENV: ${{ secrets.STAGING_TRAEFIK_ENV }}
+          STAGING_TFVARS: ${{ secrets.STAGING_TFVARS }}
+        run: |
+          echo $STAGING_DJANGO_ENV | base64 -di > .django
+          echo $STAGING_TRAEFIK_ENV | base64 -di > .traefik
+          echo $STAGING_TFVARS | base64 -di > staging.tfvars
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-django
+          path: .django
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-traefik
+          path: .traefik
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: staging-tfvars
+          path: staging.tfvars
+
+  plan-and-apply-staging:
+    needs: secrets-base
+    name: Plan and Apply
+    env:
+      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.0.9
+
+      - name: Initialize Terraform
+        run: |
+          cd terraform
+          terraform init -input=false
+
+      - name: Create and staging workspace
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform workspace new staging -input=false
+
+      - name: Plan Terraform
+        id: plan
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform plan -var-file=staging.tfvars -input=false -no-color -out=tfplan \
+          && terraform show -no-color tfplan
+
+      # Sed is taking all lines that begin with one or more spaces followed by a `+` or `-`.
+      # It stores the amount of spaces in `\1` and the +/- in `\2`.
+      # Then replace that portion of the line with `\2\1` (+/- followed by the number of matched spaces).
+      - name: Reformat Plan
+        if: steps.plan.outcome == 'success'
+        run: |
+          echo '${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}' \
+          | sed -E 's/^([[:space:]]+)([-+])/\2\1/g' > plan.txt
+
+      - name: Put Plan in Env Var
+        if: steps.plan.outcome == 'success'
+        run: |
+          PLAN=$(cat plan.txt)
+          echo "PLAN<<EOF" >> $GITHUB_ENV
+          echo "$PLAN" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Apply Terraform
+        if: steps.plan.outcome == 'success'
+        id: apply
+        continue-on-error: true
+        run: |
+          cd terraform
+          terraform apply -var-file=staging.tfvars -input=false -no-color tfplan
+
+      - name: Post Plan and Apply to GitHub PR
+        if: steps.plan.outcome == 'success' && steps.apply.outcome == 'success'
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            Applying **staging**:
+            ```diff
+            ${{ env.PLAN }}
+            ```
+            ```
+            ${{ steps.apply.outputs.stdout }}
+            ```
+
+      - name: Post Plan Failure
+        if: steps.plan.outcome == 'failure'
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            Plan failed for **staging**:
+            ```
+            ${{ steps.plan.outputs.stderr }}
+            ```
+
+      - name: Post Apply Failure
+        if: steps.apply.outcome == 'failure'
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            Apply failed for **staging**:
+            ```
+            ${{ steps.apply.outputs.stderr }}
+            ```
