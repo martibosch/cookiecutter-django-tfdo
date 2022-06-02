@@ -1,4 +1,4 @@
-name: Plan
+name: Deploy
 
 # Enable Buildkit and let compose use it to speed up image building
 env:
@@ -99,6 +99,41 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v2
 
+      - name: Create env directories
+        run: |
+          mkdir -p .envs/.production
+          mkdir -p .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-django
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-postgres
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: production-traefik
+          path: .envs/.production
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-django
+          path: .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-traefik
+          path: .envs/.staging
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
         with:
@@ -109,11 +144,18 @@ jobs:
           cd terraform
           terraform init -input=false
 
-      - name: Create and staging workspace
+      - name: Create and select workspace
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new staging -input=false
+          terraform workspace new staging
+          terraform workspace select staging
+
+      - name: Download tfvars
+        uses: actions/download-artifact@v2
+        with:
+          name: staging-tfvars
+          path: terraform
 
       - name: Plan Terraform
         id: plan
