@@ -188,43 +188,33 @@ jobs:
         continue-on-error: true
         run: |
           cd terraform
-          terraform apply -var-file=staging.tfvars -input=false -no-color tfplan
+          terraform apply -input=false -no-color tfplan
 
-      - name: Post Plan and Apply to GitHub PR
+      - name: Add Plan and Apply job summary
         if: steps.plan.outcome == 'success' && steps.apply.outcome == 'success'
-        uses: mshick/add-pr-comment@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          repo-token-user-login: 'github-actions[bot]'
-          message: |
-            Applying **staging**:
-            ```diff
-            ${{ env.PLAN }}
-            ```
-            ```
-            ${{ steps.apply.outputs.stdout }}
-            ```
+        run: |
+          echo "### Applying **staging**:" >> $GITHUB_STEP_SUMMARY
+          echo ""  >> $GITHUB_STEP_SUMMARY
+          echo "```diff" >> $GITHUB_STEP_SUMMARY
+          echo ""  >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.PLAN }}" >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.apply.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
 
-      - name: Post Plan Failure
+      - name: Add Plan Failure job summary
         if: steps.plan.outcome == 'failure'
-        uses: mshick/add-pr-comment@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          repo-token-user-login: 'github-actions[bot]'
-          message: |
-            Plan failed for **staging**:
-            ```
-            ${{ steps.plan.outputs.stderr }}
-            ```
+        run: |
+          echo "### Plan failed for **staging**:" >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.plan.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
 
-      - name: Post Apply Failure
+      - name: Add Apply Failure job summary
         if: steps.apply.outcome == 'failure'
-        uses: mshick/add-pr-comment@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          repo-token-user-login: 'github-actions[bot]'
-          message: |
-            Apply failed for **staging**:
-            ```
-            ${{ steps.apply.outputs.stderr }}
-            ```
+        run: |
+          echo "### Apply failed for **staging**:" >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.apply.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
+          echo "```"  >> $GITHUB_STEP_SUMMARY
