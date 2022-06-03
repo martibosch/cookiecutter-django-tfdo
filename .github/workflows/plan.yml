@@ -22,13 +22,13 @@ jobs:
 
       - name: Create secret files
         env:
-          PRODUCTION_DJANGO_ENV: ${{ secrets.PRODUCTION_DJANGO_ENV }}
-          PRODUCTION_POSTGRES_ENV: ${{ secrets.PRODUCTION_POSTGRES_ENV }}
-          PRODUCTION_TRAEFIK_ENV: ${{ secrets.PRODUCTION_TRAEFIK_ENV }}
+          PRODUCTION_DJANGO: ${{ secrets.PRODUCTION_DJANGO }}
+          PRODUCTION_POSTGRES: ${{ secrets.PRODUCTION_POSTGRES }}
+          PRODUCTION_TRAEFIK: ${{ secrets.PRODUCTION_TRAEFIK }}
         run: |
-          echo $PRODUCTION_DJANGO_ENV | base64 -di > .django
-          echo $PRODUCTION_POSTGRES_ENV | base64 -di > .postgres
-          echo $PRODUCTION_TRAEFIK_ENV | base64 -di > .traefik
+          echo $PRODUCTION_DJANGO | base64 -di > .django
+          echo $PRODUCTION_POSTGRES | base64 -di > .postgres
+          echo $PRODUCTION_TRAEFIK | base64 -di > .traefik
 
       - uses: actions/upload-artifact@v2
         with:
@@ -53,12 +53,12 @@ jobs:
 
       - name: Create secret files
         env:
-          STAGING_DJANGO_ENV: ${{ secrets.STAGING_DJANGO_ENV }}
-          STAGING_TRAEFIK_ENV: ${{ secrets.STAGING_TRAEFIK_ENV }}
+          STAGING_DJANGO: ${{ secrets.STAGING_DJANGO }}
+          STAGING_TRAEFIK: ${{ secrets.STAGING_TRAEFIK }}
           STAGING_TFVARS: ${{ secrets.STAGING_TFVARS }}
         run: |
-          echo $STAGING_DJANGO_ENV | base64 -di > .django
-          echo $STAGING_TRAEFIK_ENV | base64 -di > .traefik
+          echo $STAGING_DJANGO | base64 -di > .django
+          echo $STAGING_TRAEFIK | base64 -di > .traefik
           echo $STAGING_TFVARS | base64 -di > staging.tfvars
 
       - uses: actions/upload-artifact@v2
