@@ -12,19 +12,6 @@ on:
 
 
 jobs:
-  inform_about_apply:
-    name: Inform About Apply
-    runs-on: ubuntu-latest
-    steps:
-      - name: Inform on PR that Apply is Running
-        uses: mshick/add-pr-comment@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          repo-token-user-login: 'github-actions[bot]'
-          message: |
-            ***Running terraform apply***
-            Results will display here momentarily...
-
   secrets-base:
     runs-on: ubuntu-latest
     if: ${{ github.ref_name == 'staging' || github.ref_name == 'main' }}
