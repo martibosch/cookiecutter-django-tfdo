@@ -149,8 +149,9 @@ jobs:
         continue-on-error: true
         run: |
           cd terraform
-          terraform plan -var-file=staging.tfvars -input=false -no-color -out=tfplan \
-          && terraform show -no-color tfplan
+          terraform plan -var-file=staging.tfvars \
+          -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" -input=false -no-color \
+          -out=tfplan && terraform show -no-color tfplan
 
       # Sed is taking all lines that begin with one or more spaces followed by a `+` or `-`.
       # It stores the amount of spaces in `\1` and the +/- in `\2`.

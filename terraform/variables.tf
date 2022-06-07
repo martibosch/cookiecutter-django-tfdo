@@ -38,6 +38,12 @@ variable "droplet_user" {
   default     = "ubuntu"
 }
 
+variable "ssh_private_key" {
+  description = "SSH private key to access the server. (\"-----BEGIN OPENSSH PRIVATE KEY-----\" ...and so forth)."
+  type        = string
+  default     = ""
+}
+
 variable "domain" {
   description = "Domain that should point to the droplet."
   type        = string

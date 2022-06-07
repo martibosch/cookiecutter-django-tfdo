@@ -21,7 +21,8 @@ module "droplet" {
   ssh_keys = [
     data.digitalocean_ssh_key.ssh_key.id
   ]
-  user = var.droplet_user
+  user            = var.droplet_user
+  ssh_private_key = var.ssh_private_key
 
   domain  = var.domain
   records = var.records
