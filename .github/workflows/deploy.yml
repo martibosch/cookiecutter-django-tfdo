@@ -76,8 +76,6 @@ jobs:
   plan-and-apply-staging:
     needs: secrets-base
     name: Plan and Apply
-    env:
-      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

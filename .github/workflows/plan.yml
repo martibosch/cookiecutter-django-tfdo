@@ -80,8 +80,6 @@ jobs:
     needs: secrets-staging
     runs-on: ubuntu-latest
     if: ${{ github.event.pull_request.base.ref == 'staging' }}
-    env:
-      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     steps:
 
       - name: Checkout Code Repository
