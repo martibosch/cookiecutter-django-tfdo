@@ -126,16 +126,17 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Initialize Terraform
+        env:
+          TF_WORKSPACE: staging
         run: |
           cd terraform
           terraform init -input=false
 
-      - name: Create and select workspace
+      - name: Select or create workspace
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new staging
-          terraform workspace select staging
+          terraform workspace select staging || terraform workspace new staging
 
       - name: Download tfvars
         uses: actions/download-artifact@v2
