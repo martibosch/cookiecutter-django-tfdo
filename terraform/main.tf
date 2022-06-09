@@ -8,7 +8,7 @@ terraform {
   cloud {
     organization = "exaf-epfl"
     workspaces {
-      name = "cookiecutter-django-tfdo-demo"
+      tags = ["cookiecutter-django-tfdo-demo"]
     }
   }
 }
