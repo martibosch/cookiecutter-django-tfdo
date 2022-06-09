@@ -1,3 +1,12 @@
+terraform {
+  cloud {
+    organization = "exaf-epfl"
+    workspaces {
+      name = "cookiecutter-django-tfdo-demo"
+    }
+  }
+}
+
 provider "digitalocean" {
   token             = var.do_token
   spaces_access_id  = var.spaces_access_id
