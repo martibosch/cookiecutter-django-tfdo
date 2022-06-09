@@ -129,7 +129,7 @@ jobs:
         id: tf-init
         continue-on-error: true
         env:
-          TF_WORKSPACE: cookiecutter-django-tfdo-staging
+          TF_WORKSPACE: cookiecutter-django-tfdo-demo-staging
         run: |
           cd terraform
           terraform init -input=false
@@ -144,7 +144,7 @@ jobs:
         env:
           # ACHTUNG: do not use `TF_WORKSPACE` env variable name since then the "select"
           # command is ignored
-          WORKSPACE: cookiecutter-django-tfdo-staging
+          WORKSPACE: cookiecutter-django-tfdo-demo-staging
         continue-on-error: true
         run: |
           cd terraform
