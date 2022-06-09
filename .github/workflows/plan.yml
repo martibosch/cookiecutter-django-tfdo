@@ -139,17 +139,29 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Initialize Terraform
+        id: tf-init
+        continue-on-error: true
         env:
-          TF_WORKSPACE: staging
+          TF_WORKSPACE: cookiecutter-django-tfdo-staging
+        run: |
+          cd terraform
+          terraform init -input=false
+
+      - name: Initialize Terraform
+        if: steps.tf-init.outcome == 'failure'
         run: |
           cd terraform
           terraform init -input=false
 
       - name: Select or create workspace
+        env:
+          # ACHTUNG: do not use `TF_WORKSPACE` env variable name since then the "select"
+          # command is ignored
+          WORKSPACE: cookiecutter-django-tfdo-staging
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace select staging || terraform workspace new staging
+          terraform workspace select $WORKSPACE || terraform workspace new $WORKSPACE
 
       - name: Download tfvars
         uses: actions/download-artifact@v2
