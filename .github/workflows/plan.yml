@@ -80,8 +80,6 @@ jobs:
     needs: secrets-staging
     runs-on: ubuntu-latest
     if: ${{ github.event.pull_request.base.ref == 'staging' }}
-    env:
-      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     steps:
 
       - name: Checkout Code Repository
@@ -141,16 +139,17 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Initialize Terraform
+        env:
+          TF_WORKSPACE: staging
         run: |
           cd terraform
           terraform init -input=false
 
-      - name: Create and select workspace
+      - name: Select or create workspace
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new cookiecutter-django-tfdo-demo-staging
-          terraform workspace select cookiecutter-django-tfdo-demo-staging
+          terraform workspace select staging || terraform workspace new staging
 
       - name: Download tfvars
         uses: actions/download-artifact@v2
