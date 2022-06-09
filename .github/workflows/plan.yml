@@ -149,8 +149,8 @@ jobs:
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new staging
-          terraform workspace select staging
+          terraform workspace new cookiecutter-django-tfdo-demo-staging
+          terraform workspace select cookiecutter-django-tfdo-demo-staging
 
       - name: Download tfvars
         uses: actions/download-artifact@v2
