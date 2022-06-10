@@ -186,3 +186,7 @@ jobs:
             ```diff
             ${{ steps.plan.outputs.stdout }}
             ```
+
+      - name: Fail if plan fails
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

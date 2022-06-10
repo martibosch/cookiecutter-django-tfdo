@@ -193,6 +193,7 @@ jobs:
           echo "```"  >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.plan.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
           echo "```"  >> $GITHUB_STEP_SUMMARY
+          exit 1
 
       - name: Add Apply Failure job summary
         if: steps.apply.outcome == 'failure'
@@ -201,3 +202,4 @@ jobs:
           echo "```"  >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.apply.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
           echo "```"  >> $GITHUB_STEP_SUMMARY
+          exit 1
