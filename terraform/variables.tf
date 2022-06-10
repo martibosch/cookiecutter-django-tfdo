@@ -7,7 +7,7 @@ variable "ssh_key_name" {}
 variable "resource_prefix" {
   description = "Prefix name the droplets and spaces buckets."
   type        = string
-  default     = "cookiecutter-django-tfdo"
+  default     = "cookiecutter-django-tfdo-demo"
 }
 
 variable "env" {
