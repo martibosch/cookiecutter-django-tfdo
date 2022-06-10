@@ -12,6 +12,19 @@ on:
 
 
 jobs:
+  inform_about_apply:
+    name: Inform About Apply
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inform on PR that Apply is Running
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            ***Running terraform apply***
+            Results will display here momentarily...
+
   secrets-base:
     runs-on: ubuntu-latest
     if: ${{ github.ref_name == 'staging' || github.ref_name == 'main' }}
@@ -174,33 +187,49 @@ jobs:
           -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" \
           -auto-approve -input=false -no-color
 
-      - name: Add Plan and Apply job summary
+      - name: Post Plan and Apply to GitHub PR
         if: steps.plan.outcome == 'success' && steps.apply.outcome == 'success'
-        run: |
-          echo "### Applying **staging**:" >> $GITHUB_STEP_SUMMARY
-          echo ""  >> $GITHUB_STEP_SUMMARY
-          echo "```diff" >> $GITHUB_STEP_SUMMARY
-          echo ""  >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.plan.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.apply.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            Applying **staging**:
+            ```diff
+            ${{ env.PLAN }}
+            ```
+            ```
+            ${{ steps.apply.outputs.stdout }}
+            ```
 
-      - name: Add Plan Failure job summary
+      - name: Add Plan Failure to PR
         if: steps.plan.outcome == 'failure'
-        run: |
-          echo "### Plan failed for **staging**:" >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.plan.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
-          exit 1
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            Plan failed for **staging**:
+            ```
+            ${{ steps.plan.outputs.stderr }}
+            ```
 
-      - name: Add Apply Failure job summary
+      - name: Fail if Plan Fails
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Add Apply Failure to PR
         if: steps.apply.outcome == 'failure'
-        run: |
-          echo "### Apply failed for **staging**:" >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.apply.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
-          echo "```"  >> $GITHUB_STEP_SUMMARY
-          exit 1
+        uses: mshick/add-pr-comment@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token-user-login: 'github-actions[bot]'
+          message: |
+            Apply failed for **staging**:
+            ```
+            ${{ steps.apply.outputs.stderr }}
+            ```
+
+      - name: Fail if Apply Fails
+        if: steps.apply.outcome == 'failure'
+        run: exit 1
