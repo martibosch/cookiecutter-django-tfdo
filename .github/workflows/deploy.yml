@@ -171,7 +171,8 @@ jobs:
         run: |
           cd terraform
           terraform apply -var-file=staging.tfvars \
-          -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" -input=false -no-color
+          -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" \
+          -auto-approve -input=false -no-color
 
       - name: Add Plan and Apply job summary
         if: steps.plan.outcome == 'success' && steps.apply.outcome == 'success'
