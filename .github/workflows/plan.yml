@@ -80,8 +80,6 @@ jobs:
     needs: secrets-staging
     runs-on: ubuntu-latest
     if: ${{ github.event.pull_request.base.ref == 'staging' }}
-    env:
-      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     steps:
 
       - name: Checkout Code Repository
@@ -137,19 +135,33 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
         with:
-          terraform_version: 1.0.9
+          terraform_version: 1.2.2
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Initialize Terraform
+        id: tf-init
+        continue-on-error: true
+        env:
+          TF_WORKSPACE: cookiecutter-django-tfdo-demo-staging
         run: |
           cd terraform
           terraform init -input=false
 
-      - name: Create and select workspace
+      - name: Initialize Terraform
+        if: steps.tf-init.outcome == 'failure'
+        run: |
+          cd terraform
+          terraform init -input=false
+
+      - name: Select or create workspace
+        env:
+          # ACHTUNG: do not use `TF_WORKSPACE` env variable name since then the "select"
+          # command is ignored
+          WORKSPACE: cookiecutter-django-tfdo-demo-staging
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new staging
-          terraform workspace select staging
+          terraform workspace select $WORKSPACE || terraform workspace new $WORKSPACE
 
       - name: Download tfvars
         uses: actions/download-artifact@v2
@@ -162,20 +174,7 @@ jobs:
         continue-on-error: true
         run: |
           cd terraform
-          terraform plan -var-file=staging.tfvars -input=false -no-color -out=tfplan \
-          && terraform show -no-color tfplan
-
-      - name: Reformat Plan
-        run: |
-          echo '${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}' \
-          | sed -E 's/^([[:space:]]+)([-+])/\2\1/g' > plan.txt
-
-      - name: Put Plan in Env Var
-        run: |
-          PLAN=$(cat plan.txt)
-          echo "PLAN<<EOF" >> $GITHUB_ENV
-          echo "$PLAN" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          terraform plan -var-file=staging.tfvars -input=false -no-color
 
       - name: Post Plan to GitHub PR
         uses: mshick/add-pr-comment@v1
@@ -185,5 +184,9 @@ jobs:
           repo-token-user-login: 'github-actions[bot]'
           message: |
             ```diff
-            ${{ env.PLAN }}
-            ``
+            ${{ steps.plan.outputs.stdout }}
+            ```
+
+      - name: Fail if plan fails
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

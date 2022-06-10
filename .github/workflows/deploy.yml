@@ -76,8 +76,6 @@ jobs:
   plan-and-apply-staging:
     needs: secrets-base
     name: Plan and Apply
-    env:
-      TF_VAR_allowed_account_id: ${{ secrets.ALLOWED_ACCOUNT_ID }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -124,19 +122,33 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
         with:
-          terraform_version: 1.0.9
+          terraform_version: 1.2.2
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Initialize Terraform
+        id: tf-init
+        continue-on-error: true
+        env:
+          TF_WORKSPACE: cookiecutter-django-tfdo-demo-staging
         run: |
           cd terraform
           terraform init -input=false
 
-      - name: Create and select workspace
+      - name: Initialize Terraform
+        if: steps.tf-init.outcome == 'failure'
+        run: |
+          cd terraform
+          terraform init -input=false
+
+      - name: Select or create workspace
+        env:
+          # ACHTUNG: do not use `TF_WORKSPACE` env variable name since then the "select"
+          # command is ignored
+          WORKSPACE: cookiecutter-django-tfdo-demo-staging
         continue-on-error: true
         run: |
           cd terraform
-          terraform workspace new staging
-          terraform workspace select staging
+          terraform workspace select $WORKSPACE || terraform workspace new $WORKSPACE
 
       - name: Download tfvars
         uses: actions/download-artifact@v2
@@ -150,25 +162,7 @@ jobs:
         run: |
           cd terraform
           terraform plan -var-file=staging.tfvars \
-          -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" -input=false -no-color \
-          -out=tfplan && terraform show -no-color tfplan
-
-      # Sed is taking all lines that begin with one or more spaces followed by a `+` or `-`.
-      # It stores the amount of spaces in `\1` and the +/- in `\2`.
-      # Then replace that portion of the line with `\2\1` (+/- followed by the number of matched spaces).
-      - name: Reformat Plan
-        if: steps.plan.outcome == 'success'
-        run: |
-          echo '${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}' \
-          | sed -E 's/^([[:space:]]+)([-+])/\2\1/g' > plan.txt
-
-      - name: Put Plan in Env Var
-        if: steps.plan.outcome == 'success'
-        run: |
-          PLAN=$(cat plan.txt)
-          echo "PLAN<<EOF" >> $GITHUB_ENV
-          echo "$PLAN" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" -input=false -no-color
 
       - name: Apply Terraform
         if: steps.plan.outcome == 'success'
@@ -176,7 +170,8 @@ jobs:
         continue-on-error: true
         run: |
           cd terraform
-          terraform apply -input=false -no-color tfplan
+          terraform apply -var-file=staging.tfvars \
+          -var "ssh_private_key={{ secrets.SSH_PRIVATE_KEY }}" -input=false -no-color
 
       - name: Add Plan and Apply job summary
         if: steps.plan.outcome == 'success' && steps.apply.outcome == 'success'
@@ -185,7 +180,7 @@ jobs:
           echo ""  >> $GITHUB_STEP_SUMMARY
           echo "```diff" >> $GITHUB_STEP_SUMMARY
           echo ""  >> $GITHUB_STEP_SUMMARY
-          echo "${{ env.PLAN }}" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.plan.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
           echo "```"  >> $GITHUB_STEP_SUMMARY
           echo "```"  >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.apply.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
@@ -198,6 +193,7 @@ jobs:
           echo "```"  >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.plan.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
           echo "```"  >> $GITHUB_STEP_SUMMARY
+          exit 1
 
       - name: Add Apply Failure job summary
         if: steps.apply.outcome == 'failure'
@@ -206,3 +202,4 @@ jobs:
           echo "```"  >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.apply.outputs.stderr }}" >> $GITHUB_STEP_SUMMARY
           echo "```"  >> $GITHUB_STEP_SUMMARY
+          exit 1
