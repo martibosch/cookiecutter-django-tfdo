@@ -125,8 +125,8 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: echo ${PERSONAL_ACCESS_TOKEN} | docker login ghcr.io -u ${{ secrets.NAMESPACE }} --password-stdin
 
-      - name: Pull and Build the Stack
-        run:  docker-compose -f production.yml -f staging.yml build --pull
+      - name: Build the Stack
+        run:  docker-compose -f production.yml -f staging.yml build
 
       - name: Run DB Migrations
         run:  docker-compose -f production.yml -f staging.yml run --rm django python manage.py migrate
