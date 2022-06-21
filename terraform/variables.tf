@@ -2,7 +2,9 @@ variable "do_token" {}
 variable "spaces_access_id" {}
 variable "spaces_secret_key" {}
 # variable "domain_name" {}
-variable "ssh_key_name" {}
+variable "ssh_key_name" {
+  default = "cookiecutter-django-tfdo-demo"
+}
 
 variable "resource_prefix" {
   description = "Prefix name the droplets and spaces buckets."
@@ -68,4 +70,9 @@ variable "docker_compose_version" {
 variable "cors_allowed_origins" {
   description = "Domain to add a CORS allowed origin rule to the spaces instance."
   type        = list(string)
+}
+
+variable "repo_name" {
+  type    = string
+  default = "martibosch/cookiecutter-terraform-tfdo-demo"
 }

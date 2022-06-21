@@ -120,6 +120,11 @@ jobs:
           name: staging-tfvars
           path: terraform
 
+      - name: Log in to GitHub Packages
+        env:
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: echo ${PERSONAL_ACCESS_TOKEN} | docker login ghcr.io -u ${{ secrets.NAMESPACE }} --password-stdin
+
       - name: Build the Stack
         run:  docker-compose -f production.yml -f staging.yml build
 
@@ -131,6 +136,12 @@ jobs:
 
       - name: Tear down the Stack
         run:  docker-compose -f production.yml -f staging.yml down
+
+      - name: Push to GitHub Packages
+        run:  docker-compose -f production.yml -f staging.yml push
+
+      - name: Log out from GitHub Packages
+        run: docker logout
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
