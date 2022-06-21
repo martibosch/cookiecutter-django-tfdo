@@ -103,8 +103,13 @@ data "sshclient_keyscan" "keyscan" {
 }
 
 resource "github_actions_environment_secret" "known_hosts" {
-  repository      = data.github_repository.repo.name
-  environment     = github_repository_environment.digitalocean_environment.environment
-  secret_name     = "known_hosts"
-  plaintext_value = data.sshclient_keyscan.keyscan
+  repository  = data.github_repository.repo.name
+  environment = github_repository_environment.digitalocean_environment.environment
+  secret_name = "known_hosts"
+  plaintext_value = templatefile(
+    "${path.module}/templates/known_hosts.tpl",
+    {
+      keyscan = data.sshclient_keyscan.keyscan,
+    }
+  )
 }
